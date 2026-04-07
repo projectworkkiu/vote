@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ electionId: string }> }) {
   try {
@@ -11,18 +11,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { electionId } = await params;
 
-    // Get election with positions and candidates
-    const { data: election } = await supabaseAdmin
-      .from('elections')
-      .select(`
-        *,
-        positions (
-          id, name,
-          candidates (id, name, photo, bio)
-        )
-      `)
-      .eq('id', electionId)
-      .single();
+    // Get election
+    const electionResult = await pool.query('SELECT * FROM elections WHERE id = $1', [electionId]);
+    const election = electionResult.rows[0];
 
     if (!election) {
       return NextResponse.json({ error: 'Election not found' }, { status: 404 });
@@ -33,29 +24,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Results are not available yet' }, { status: 403 });
     }
 
-    // Get vote counts per candidate
-    const { data: votes } = await supabaseAdmin
-      .from('votes')
-      .select('candidate_id')
-      .eq('election_id', electionId);
+    // Get positions
+    const positionsResult = await pool.query('SELECT * FROM positions WHERE election_id = $1', [electionId]);
+    const positions = positionsResult.rows;
 
-    // Count votes per candidate
+    // Get candidates for each position
+    const results = await Promise.all(positions.map(async (pos) => {
+      const candidatesResult = await pool.query('SELECT * FROM candidates WHERE position_id = $1', [pos.id]);
+      return {
+        position: pos.name,
+        positionId: pos.id,
+        candidates: candidatesResult.rows,
+      };
+    }));
+
+    // Get vote counts per candidate
+    const voteCountsResult = await pool.query('SELECT candidate_id, COUNT(*) as count FROM votes WHERE election_id = $1 GROUP BY candidate_id', [electionId]);
     const voteCounts: Record<string, number> = {};
-    votes?.forEach((v: any) => {
-      voteCounts[v.candidate_id] = (voteCounts[v.candidate_id] || 0) + 1;
+    voteCountsResult.rows.forEach((row: any) => {
+      voteCounts[row.candidate_id] = parseInt(row.count);
     });
 
     // Get total voters
-    const { count: totalVoters } = await supabaseAdmin
-      .from('voting_records')
-      .select('id', { count: 'exact' })
-      .eq('election_id', electionId);
+    const totalVotersResult = await pool.query('SELECT COUNT(*) as count FROM voting_records WHERE election_id = $1', [electionId]);
+    const totalVoters = parseInt(totalVotersResult.rows[0].count);
 
     // Build results
-    const results = election.positions?.map((pos: any) => ({
-      position: pos.name,
-      positionId: pos.id,
-      candidates: pos.candidates?.map((c: any) => ({
+    const finalResults = results.map((pos) => ({
+      position: pos.position,
+      positionId: pos.positionId,
+      candidates: pos.candidates.map((c: any) => ({
         id: c.id,
         name: c.name,
         photo: c.photo,
@@ -71,8 +69,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         startDate: election.start_date,
         endDate: election.end_date,
       },
-      results,
-      totalVoters: totalVoters || 0,
+      results: finalResults,
+      totalVoters,
     });
   } catch (error) {
     console.error('Results error:', error);

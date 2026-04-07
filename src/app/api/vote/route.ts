@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 
@@ -19,11 +19,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check election is active
-    const { data: election } = await supabaseAdmin
-      .from('elections')
-      .select('*')
-      .eq('id', electionId)
-      .single();
+    const electionResult = await pool.query('SELECT * FROM elections WHERE id = $1', [electionId]);
+    const election = electionResult.rows[0];
 
     if (!election || election.status !== 'ACTIVE') {
       return NextResponse.json({ error: 'Election is not active' }, { status: 400 });
@@ -35,14 +32,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if student already voted
-    const { data: existingRecord } = await supabaseAdmin
-      .from('voting_records')
-      .select('id')
-      .eq('student_id', user.id)
-      .eq('election_id', electionId)
-      .single();
-
-    if (existingRecord) {
+    const recordResult = await pool.query('SELECT id FROM voting_records WHERE student_id = $1 AND election_id = $2', [user.id, electionId]);
+    if (recordResult.rows.length > 0) {
       return NextResponse.json({ error: 'You have already voted in this election' }, { status: 409 });
     }
 
@@ -59,15 +50,12 @@ export async function POST(request: NextRequest) {
     });
 
     // Insert votes (anonymous)
-    const { error: voteError } = await supabaseAdmin.from('votes').insert(voteRecords);
-    if (voteError) throw voteError;
+    const placeholders = voteRecords.map((_, i) => `($${i*4 + 1}, $${i*4 + 2}, $${i*4 + 3}, $${i*4 + 4})`).join(', ');
+    const values = voteRecords.flatMap(r => [r.candidate_id, r.position_id, r.election_id, r.token]);
+    await pool.query(`INSERT INTO votes (candidate_id, position_id, election_id, token) VALUES ${placeholders}`, values);
 
     // Record that this student has voted (without recording what they voted for)
-    const { error: recordError } = await supabaseAdmin.from('voting_records').insert({
-      student_id: user.id,
-      election_id: electionId,
-    });
-    if (recordError) throw recordError;
+    await pool.query('INSERT INTO voting_records (student_id, election_id) VALUES ($1, $2)', [user.id, electionId]);
 
     return NextResponse.json({
       success: true,

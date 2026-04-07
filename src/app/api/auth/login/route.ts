@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { hashPassword, verifyPassword, generateToken, setAuthCookie } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,13 +12,10 @@ export async function POST(request: NextRequest) {
 
     if (role === 'admin') {
       // Check admin credentials
-      const { data: admin, error } = await supabaseAdmin
-        .from('admins')
-        .select('*')
-        .eq('username', username)
-        .single();
+      const result = await pool.query('SELECT * FROM admins WHERE username = $1', [username]);
+      const admin = result.rows[0];
 
-      if (error || !admin) {
+      if (!admin) {
         return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
       }
 
@@ -36,11 +33,11 @@ export async function POST(request: NextRequest) {
       await setAuthCookie(token);
 
       // Log activity
-      await supabaseAdmin.from('activity_logs').insert({
-        action: 'Admin Login',
-        details: `Admin "${admin.username}" logged in`,
-        performed_by: admin.username,
-      });
+      await pool.query('INSERT INTO activity_logs (action, details, performed_by) VALUES ($1, $2, $3)', [
+        'Admin Login',
+        `Admin "${admin.username}" logged in`,
+        admin.username,
+      ]);
 
       return NextResponse.json({
         success: true,
@@ -49,13 +46,10 @@ export async function POST(request: NextRequest) {
       });
     } else if (role === 'student') {
       // Check student credentials
-      const { data: student, error } = await supabaseAdmin
-        .from('students')
-        .select('*')
-        .eq('student_id', username)
-        .single();
+      const result = await pool.query('SELECT * FROM students WHERE student_id = $1', [username]);
+      const student = result.rows[0];
 
-      if (error || !student) {
+      if (!student) {
         return NextResponse.json({ error: 'Invalid student ID or password' }, { status: 401 });
       }
 

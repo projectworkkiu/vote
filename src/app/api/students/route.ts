@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, hashPassword } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 // GET all students
 export async function GET(request: NextRequest) {
@@ -13,19 +13,19 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search');
 
-    let query = supabaseAdmin
-      .from('students')
-      .select('id, student_id, name, class, is_active, created_at')
-      .order('created_at', { ascending: false });
+    let query = 'SELECT id, student_id, name, class, is_active, created_at FROM students';
+    let params = [];
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,student_id.ilike.%${search}%,class.ilike.%${search}%`);
+      query += ' WHERE name ILIKE $1 OR student_id ILIKE $1 OR class ILIKE $1';
+      params = [`%${search}%`];
     }
 
-    const { data: students, error } = await query;
-    if (error) throw error;
+    query += ' ORDER BY created_at DESC';
 
-    return NextResponse.json(students);
+    const result = await pool.query(query, params);
+
+    return NextResponse.json(result.rows);
   } catch (error) {
     console.error('Get students error:', error);
     return NextResponse.json({ error: 'Failed to fetch students' }, { status: 500 });
@@ -47,36 +47,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Check for duplicate
-    const { data: existing } = await supabaseAdmin
-      .from('students')
-      .select('id')
-      .eq('student_id', studentId)
-      .single();
-
-    if (existing) {
+    const existingResult = await pool.query('SELECT id FROM students WHERE student_id = $1', [studentId]);
+    if (existingResult.rows.length > 0) {
       return NextResponse.json({ error: 'Student ID already exists' }, { status: 409 });
     }
 
     const hashedPassword = await hashPassword(password);
 
-    const { data: student, error } = await supabaseAdmin
-      .from('students')
-      .insert({
-        student_id: studentId,
-        name,
-        class: className,
-        password: hashedPassword,
-      })
-      .select('id, student_id, name, class, is_active, created_at')
-      .single();
+    const insertResult = await pool.query(
+      'INSERT INTO students (student_id, name, class, password) VALUES ($1, $2, $3, $4) RETURNING id, student_id, name, class, is_active, created_at',
+      [studentId, name, className, hashedPassword]
+    );
+    const student = insertResult.rows[0];
 
-    if (error) throw error;
-
-    await supabaseAdmin.from('activity_logs').insert({
-      action: 'Student Added',
-      details: `Student "${name}" (${studentId}) was added`,
-      performed_by: user.username || 'admin',
-    });
+    await pool.query('INSERT INTO activity_logs (action, details, performed_by) VALUES ($1, $2, $3)', [
+      'Student Added',
+      `Student "${name}" (${studentId}) was added`,
+      user.username || 'admin',
+    ]);
 
     return NextResponse.json(student, { status: 201 });
   } catch (error) {

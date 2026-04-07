@@ -1,8 +1,14 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Database
+
+This project uses [Neon](https://neon.tech) as the PostgreSQL database provider.
+
 ## Getting Started
 
-First, run the development server:
+First, set up your environment variables by copying `.env.example` to `.env` and filling in your Neon database URL.
+
+Then, run the development server:
 
 ```bash
 npm run dev
