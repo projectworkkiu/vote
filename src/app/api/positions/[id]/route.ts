@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -10,11 +10,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     const { id } = await params;
-    const { error } = await supabaseAdmin.from('positions').delete().eq('id', id);
-    if (error) throw error;
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
+    await pool.query('DELETE FROM positions WHERE id = $1', [id]);  } catch (error) {
     console.error('Delete position error:', error);
     return NextResponse.json({ error: 'Failed to delete position' }, { status: 500 });
   }

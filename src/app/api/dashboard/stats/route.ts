@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 export async function GET() {
   try {
@@ -9,68 +9,42 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Total students
-    const { count: totalStudents } = await supabaseAdmin
-      .from('students')
-      .select('id', { count: 'exact' });
+    const totalStudentsResult = await pool.query('SELECT COUNT(*) AS count FROM students');
+    const totalStudents = parseInt(totalStudentsResult.rows[0]?.count || '0', 10);
 
-    // Active elections
-    const { data: activeElections } = await supabaseAdmin
-      .from('elections')
-      .select('id')
-      .eq('status', 'ACTIVE');
+    const activeElectionsResult = await pool.query('SELECT COUNT(*) AS count FROM elections WHERE status = $1', ['ACTIVE']);
+    const activeElections = parseInt(activeElectionsResult.rows[0]?.count || '0', 10);
 
-    // Total votes cast
-    const { count: totalVotes } = await supabaseAdmin
-      .from('votes')
-      .select('id', { count: 'exact' });
+    const totalVotesResult = await pool.query('SELECT COUNT(*) AS count FROM votes');
+    const totalVotes = parseInt(totalVotesResult.rows[0]?.count || '0', 10);
 
-    // Total unique voters
-    const { count: totalVoters } = await supabaseAdmin
-      .from('voting_records')
-      .select('id', { count: 'exact' });
+    const totalVotersResult = await pool.query('SELECT COUNT(*) AS count FROM voting_records');
+    const totalVoters = parseInt(totalVotersResult.rows[0]?.count || '0', 10);
 
-    // Participation rate
-    const participationRate = totalStudents && totalStudents > 0
-      ? Math.round(((totalVoters || 0) / totalStudents) * 100)
-      : 0;
+    const participationRate = totalStudents > 0 ? Math.round((totalVoters / totalStudents) * 100) : 0;
 
-    // Recent activity
-    const { data: recentActivity } = await supabaseAdmin
-      .from('activity_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10);
+    const recentActivityResult = await pool.query('SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 10');
+    const recentActivity = recentActivityResult.rows;
 
-    // Election stats for charts
-    const { data: elections } = await supabaseAdmin
-      .from('elections')
-      .select('id, title, status')
-      .order('created_at', { ascending: false })
-      .limit(5);
-
+    const electionsResult = await pool.query('SELECT id, title, status FROM elections ORDER BY created_at DESC LIMIT 5');
     const electionStats = [];
-    if (elections) {
-      for (const el of elections) {
-        const { count } = await supabaseAdmin
-          .from('votes')
-          .select('id', { count: 'exact' })
-          .eq('election_id', el.id);
-        electionStats.push({
-          name: el.title,
-          votes: count || 0,
-          status: el.status,
-        });
-      }
+
+    for (const el of electionsResult.rows) {
+      const voteCountResult = await pool.query('SELECT COUNT(*) AS count FROM votes WHERE election_id = $1', [el.id]);
+      electionStats.push({
+        name: el.title,
+        votes: parseInt(voteCountResult.rows[0]?.count || '0', 10),
+        status: el.status,
+      });
     }
 
     return NextResponse.json({
-      totalStudents: totalStudents || 0,
-      activeElections: activeElections?.length || 0,
-      totalVotes: totalVotes || 0,
-      totalVoters: totalVoters || 0,
+      totalStudents,
+      activeElections,
+      totalVotes,
+      totalVoters,
       participationRate,
-      recentActivity: recentActivity || [],
+      recentActivity,
       electionStats,
     });
   } catch (error) {

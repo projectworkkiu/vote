@@ -1,36 +1,26 @@
 import { NextResponse } from 'next/server';
 import { hashPassword } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 // Seed the database with default admin
 export async function POST() {
   try {
-    // Check if admin already exists
-    const { data: existing } = await supabaseAdmin
-      .from('admins')
-      .select('id')
-      .eq('username', 'admin')
-      .single();
-
-    if (existing) {
+    const existingResult = await pool.query('SELECT id FROM admins WHERE username = $1', ['admin']);
+    if (existingResult.rows.length > 0) {
       return NextResponse.json({ message: 'Admin already exists', seeded: false });
     }
 
     const hashedPassword = await hashPassword('admin123');
 
-    const { error } = await supabaseAdmin.from('admins').insert({
-      username: 'admin',
-      password: hashedPassword,
-      must_change_password: true,
-    });
+    await pool.query(
+      'INSERT INTO admins (username, password, must_change_password) VALUES ($1, $2, $3)',
+      ['admin', hashedPassword, true]
+    );
 
-    if (error) throw error;
-
-    await supabaseAdmin.from('activity_logs').insert({
-      action: 'System Seeded',
-      details: 'Default admin account created',
-      performed_by: 'system',
-    });
+    await pool.query(
+      'INSERT INTO activity_logs (action, details, performed_by) VALUES ($1, $2, $3)',
+      ['System Seeded', 'Default admin account created', 'system']
+    );
 
     return NextResponse.json({ message: 'Default admin created successfully', seeded: true });
   } catch (error) {

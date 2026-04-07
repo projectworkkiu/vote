@@ -1,42 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 // GET single election
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { data: election, error } = await supabaseAdmin
-      .from('elections')
-      .select(`
-        *,
-        positions (
-          id, name,
-          candidates (id, name, photo, bio)
-        )
-      `)
-      .eq('id', id)
-      .single();
 
-    if (error || !election) {
+    const electionResult = await pool.query('SELECT * FROM elections WHERE id = $1', [id]);
+    const election = electionResult.rows[0];
+
+    if (!election) {
       return NextResponse.json({ error: 'Election not found' }, { status: 404 });
     }
 
-    // Check if current user is a student and has voted
+    const positionsResult = await pool.query('SELECT * FROM positions WHERE election_id = $1 ORDER BY created_at ASC', [id]);
+    const positionIds = positionsResult.rows.map((pos: any) => pos.id);
+    const candidatesResult = positionIds.length > 0
+      ? await pool.query('SELECT * FROM candidates WHERE position_id = ANY($1)', [positionIds])
+      : { rows: [] };
+
+    const positions = positionsResult.rows.map((pos: any) => ({
+      ...pos,
+      candidates: candidatesResult.rows.filter((c: any) => c.position_id === pos.id),
+    }));
+
     let hasVoted = false;
     const user = await getCurrentUser();
     if (user && user.role === 'student') {
-      const { data: record } = await supabaseAdmin
-        .from('voting_records')
-        .select('id')
-        .eq('election_id', id)
-        .eq('student_id', user.id)
-        .single();
-      
-      if (record) hasVoted = true;
+      const recordResult = await pool.query(
+        'SELECT id FROM voting_records WHERE election_id = $1 AND student_id = $2 LIMIT 1',
+        [id, user.id]
+      );
+      hasVoted = recordResult.rows.length > 0;
     }
 
-    return NextResponse.json({ ...election, hasVoted });
+    return NextResponse.json({ ...election, positions, hasVoted });
   } catch (error) {
     console.error('Get election error:', error);
     return NextResponse.json({ error: 'Failed to fetch election' }, { status: 500 });
@@ -54,68 +53,67 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     const body = await request.json();
 
-    // Check if voting has started
-    const { data: votes } = await supabaseAdmin
-      .from('votes')
-      .select('id')
-      .eq('election_id', id)
-      .limit(1);
+    const voteCountResult = await pool.query('SELECT COUNT(*) AS count FROM votes WHERE election_id = $1', [id]);
+    const votesCount = parseInt(voteCountResult.rows[0]?.count || '0', 10);
 
-    if (votes && votes.length > 0 && body.status !== 'CLOSED') {
-      // Allow only status changes after voting starts
-      const allowedFields = ['status'];
-      const updateFields: Record<string, unknown> = {};
-      for (const field of allowedFields) {
-        if (body[field] !== undefined) {
-          updateFields[field] = body[field];
-        }
+    const updateFields: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (votesCount > 0 && body.status !== 'CLOSED') {
+      if (body.status !== undefined) {
+        updateFields.push(`status = $${idx++}`);
+        values.push(body.status);
       }
-      updateFields.updated_at = new Date().toISOString();
-
-      const { data, error } = await supabaseAdmin
-        .from('elections')
-        .update(updateFields)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return NextResponse.json(data);
+    } else {
+      if (body.title) {
+        updateFields.push(`title = $${idx++}`);
+        values.push(body.title);
+      }
+      if (body.description !== undefined) {
+        updateFields.push(`description = $${idx++}`);
+        values.push(body.description);
+      }
+      if (body.startDate) {
+        updateFields.push(`start_date = $${idx++}`);
+        values.push(body.startDate);
+      }
+      if (body.endDate) {
+        updateFields.push(`end_date = $${idx++}`);
+        values.push(body.endDate);
+      }
+      if (body.status) {
+        updateFields.push(`status = $${idx++}`);
+        values.push(body.status);
+      }
     }
 
-    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (body.title) updateData.title = body.title;
-    if (body.description !== undefined) updateData.description = body.description;
-    if (body.startDate) updateData.start_date = body.startDate;
-    if (body.endDate) updateData.end_date = body.endDate;
-    if (body.status) updateData.status = body.status;
+    updateFields.push(`updated_at = $${idx++}`);
+    values.push(new Date().toISOString());
+    values.push(id);
 
-    const { data: election, error } = await supabaseAdmin
-      .from('elections')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
+    const electionUpdateResult = await pool.query(
+      `UPDATE elections SET ${updateFields.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+    const election = electionUpdateResult.rows[0];
 
-    if (error) throw error;
-
-    // Handle positions update
     if (body.positions && Array.isArray(body.positions)) {
-      // Delete old positions (cascade deletes candidates)
-      await supabaseAdmin.from('positions').delete().eq('election_id', id);
-      // Insert new positions
-      const positionRecords = body.positions.map((name: string) => ({
-        name,
-        election_id: id,
-      }));
-      await supabaseAdmin.from('positions').insert(positionRecords);
+      await pool.query('DELETE FROM positions WHERE election_id = $1', [id]);
+      if (body.positions.length > 0) {
+        const positionValues: any[] = [];
+        const positionPlaceholders = body.positions.map((name: string, index: number) => {
+          positionValues.push(name, id);
+          return `($${index * 2 + 1}, $${index * 2 + 2})`;
+        }).join(', ');
+        await pool.query(`INSERT INTO positions (name, election_id) VALUES ${positionPlaceholders}`, positionValues);
+      }
     }
 
-    await supabaseAdmin.from('activity_logs').insert({
-      action: 'Election Updated',
-      details: `Election "${election.title}" was updated`,
-      performed_by: user.username || 'admin',
-    });
+    await pool.query(
+      'INSERT INTO activity_logs (action, details, performed_by) VALUES ($1, $2, $3)',
+      ['Election Updated', `Election "${election.title}" was updated`, user.username || 'admin']
+    );
 
     return NextResponse.json(election);
   } catch (error) {
@@ -133,21 +131,14 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     const { id } = await params;
+    const electionResult = await pool.query('SELECT title FROM elections WHERE id = $1', [id]);
+    const election = electionResult.rows[0];
 
-    const { data: election } = await supabaseAdmin
-      .from('elections')
-      .select('title')
-      .eq('id', id)
-      .single();
-
-    const { error } = await supabaseAdmin.from('elections').delete().eq('id', id);
-    if (error) throw error;
-
-    await supabaseAdmin.from('activity_logs').insert({
-      action: 'Election Deleted',
-      details: `Election "${election?.title}" was deleted`,
-      performed_by: user.username || 'admin',
-    });
+    await pool.query('DELETE FROM elections WHERE id = $1', [id]);
+    await pool.query(
+      'INSERT INTO activity_logs (action, details, performed_by) VALUES ($1, $2, $3)',
+      ['Election Deleted', `Election "${election?.title}" was deleted`, user.username || 'admin']
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {

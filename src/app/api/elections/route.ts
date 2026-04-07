@@ -1,23 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 // GET all elections
 export async function GET() {
   try {
-    const { data: elections, error } = await supabaseAdmin
-      .from('elections')
-      .select(`
-        *,
-        positions (
-          id, name,
-          candidates (id, name, photo, bio)
-        )
-      `)
-      .order('created_at', { ascending: false });
+    const electionsResult = await pool.query('SELECT * FROM elections ORDER BY created_at DESC');
+    const elections = electionsResult.rows;
+    const electionIds = elections.map((el: any) => el.id);
 
-    if (error) throw error;
-    return NextResponse.json(elections);
+    if (electionIds.length === 0) {
+      return NextResponse.json([]);
+    }
+
+    const positionsResult = await pool.query('SELECT * FROM positions WHERE election_id = ANY($1) ORDER BY created_at ASC', [electionIds]);
+    const positions = positionsResult.rows;
+    const positionIds = positions.map((pos: any) => pos.id);
+
+    const candidatesResult = positionIds.length > 0
+      ? await pool.query('SELECT * FROM candidates WHERE position_id = ANY($1)', [positionIds])
+      : { rows: [] };
+
+    const positionsWithCandidates = positions.map((pos: any) => ({
+      ...pos,
+      candidates: candidatesResult.rows.filter((c: any) => c.position_id === pos.id),
+    }));
+
+    const electionsWithNested = elections.map((el: any) => ({
+      ...el,
+      positions: positionsWithCandidates.filter((pos: any) => pos.election_id === el.id),
+    }));
+
+    return NextResponse.json(electionsWithNested);
   } catch (error) {
     console.error('Get elections error:', error);
     return NextResponse.json({ error: 'Failed to fetch elections' }, { status: 500 });
@@ -38,36 +52,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Title, start date, and end date are required' }, { status: 400 });
     }
 
-    // Create election
-    const { data: election, error } = await supabaseAdmin
-      .from('elections')
-      .insert({
-        title,
-        description: description || '',
-        start_date: startDate,
-        end_date: endDate,
-        status: 'DRAFT',
-      })
-      .select()
-      .single();
+    const insertElection = await pool.query(
+      'INSERT INTO elections (title, description, start_date, end_date, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [title, description || '', startDate, endDate, 'DRAFT']
+    );
+    const election = insertElection.rows[0];
 
-    if (error) throw error;
-
-    // Create positions if provided
     if (positions && Array.isArray(positions) && positions.length > 0) {
-      const positionRecords = positions.map((name: string) => ({
-        name,
-        election_id: election.id,
-      }));
-      await supabaseAdmin.from('positions').insert(positionRecords);
+      const positionRecords = positions.map((name: string) => ({ name, election_id: election.id }));
+      const values: any[] = [];
+      const placeholders = positionRecords.map((pos, index) => {
+        const offset = index * 2;
+        values.push(pos.name, pos.election_id);
+        return `($${offset + 1}, $${offset + 2})`;
+      }).join(', ');
+      await pool.query(`INSERT INTO positions (name, election_id) VALUES ${placeholders}`, values);
     }
 
-    // Log activity
-    await supabaseAdmin.from('activity_logs').insert({
-      action: 'Election Created',
-      details: `Election "${title}" was created`,
-      performed_by: user.username || 'admin',
-    });
+    await pool.query(
+      'INSERT INTO activity_logs (action, details, performed_by) VALUES ($1, $2, $3)',
+      ['Election Created', `Election "${title}" was created`, user.username || 'admin']
+    );
 
     return NextResponse.json(election, { status: 201 });
   } catch (error) {

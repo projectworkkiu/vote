@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, hashPassword, verifyPassword, generateToken, setAuthCookie } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 export async function PUT(request: NextRequest) {
   try {
@@ -15,14 +15,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Current password is required' }, { status: 400 });
     }
 
-    // Verify current auth
-    const { data: admin, error } = await supabaseAdmin
-      .from('admins')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+    const adminResult = await pool.query('SELECT * FROM admins WHERE id = $1', [user.id]);
+    const admin = adminResult.rows[0];
 
-    if (error || !admin) {
+    if (!admin) {
       return NextResponse.json({ error: 'Admin not found' }, { status: 404 });
     }
 
@@ -31,57 +27,49 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 });
     }
 
-    const updateFields: any = { updated_at: new Date().toISOString() };
+    const updateClauses: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
 
-    // Set new username
     if (newUsername && newUsername.trim() !== '') {
-      // check if username is taken by another admin
-      const { data: existing } = await supabaseAdmin
-        .from('admins')
-        .select('id')
-        .eq('username', newUsername)
-        .neq('id', user.id)
-        .single();
-      
-      if (existing) {
+      const duplicate = await pool.query(
+        'SELECT id FROM admins WHERE username = $1 AND id <> $2',
+        [newUsername.trim(), user.id]
+      );
+      if (duplicate.rows.length > 0) {
         return NextResponse.json({ error: 'Username is already taken' }, { status: 409 });
       }
-
-      updateFields.username = newUsername.trim();
+      updateClauses.push(`username = $${paramIndex++}`);
+      values.push(newUsername.trim());
     }
 
-    // Set new password
     if (newPassword && newPassword.trim() !== '') {
       if (newPassword.length < 6) {
-         return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
+        return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
       }
-      updateFields.password = await hashPassword(newPassword);
+      updateClauses.push(`password = $${paramIndex++}`);
+      values.push(await hashPassword(newPassword));
     }
 
-    // Update the DB
-    const { error: updateError } = await supabaseAdmin
-      .from('admins')
-      .update(updateFields)
-      .eq('id', user.id);
+    updateClauses.push(`updated_at = $${paramIndex++}`);
+    values.push(new Date().toISOString());
+    values.push(user.id);
 
-    if (updateError) throw updateError;
+    await pool.query(`UPDATE admins SET ${updateClauses.join(', ')} WHERE id = $${paramIndex}`, values);
 
-    // Refresh cookie if username changed so context stays active
-    if (updateFields.username) {
+    if (newUsername && newUsername.trim() !== '') {
       const newToken = generateToken({
         id: user.id,
         role: 'admin',
-        username: updateFields.username,
+        username: newUsername.trim(),
       });
       await setAuthCookie(newToken);
     }
 
-    // Log the activity
-    await supabaseAdmin.from('activity_logs').insert({
-      action: 'Credentials Updated',
-      details: 'Admin updated their login credentials',
-      performed_by: updateFields.username || admin.username,
-    });
+    await pool.query(
+      'INSERT INTO activity_logs (action, details, performed_by) VALUES ($1, $2, $3)',
+      ['Credentials Updated', 'Admin updated their login credentials', newUsername?.trim() || admin.username]
+    );
 
     return NextResponse.json({ success: true });
   } catch (err) {

@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { supabase } from '@/lib/supabase';
 
 interface Candidate {
   id: string;
@@ -34,9 +33,6 @@ export default function CandidatesPage() {
   const [editingCandidate, setEditingCandidate] = useState<Candidate | null>(null);
   
   const [form, setForm] = useState({ name: '', bio: '', photo: '', positionId: '' });
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
   const [filterElection, setFilterElection] = useState('');
 
   useEffect(() => { fetchData(); }, []);
@@ -56,54 +52,13 @@ export default function CandidatesPage() {
   const openCreate = () => {
     setEditingCandidate(null);
     setForm({ name: '', bio: '', photo: '', positionId: '' });
-    if (fileInputRef.current) fileInputRef.current.value = '';
     setShowModal(true);
   };
 
   const openEdit = (c: Candidate) => {
     setEditingCandidate(c);
     setForm({ name: c.name, bio: c.bio || '', photo: c.photo || '', positionId: c.position_id });
-    if (fileInputRef.current) fileInputRef.current.value = '';
     setShowModal(true);
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('Image must be less than 2MB');
-      return;
-    }
-
-    setUploading(true);
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
-
-    try {
-      const { data, error } = await supabase.storage
-        .from('candidate-photos')
-        .upload(fileName, file, { cacheControl: '3600', upsert: false });
-
-      if (error) {
-        toast.error('Failed to upload image to Supabase');
-        console.error(error);
-        return;
-      }
-
-      // Get public URL
-      const { data: publicUrlData } = supabase.storage
-        .from('candidate-photos')
-        .getPublicUrl(fileName);
-
-      setForm({ ...form, photo: publicUrlData.publicUrl });
-      toast.success('Image uploaded successfully');
-    } catch (err) {
-      toast.error('Upload failed');
-    } finally {
-      setUploading(false);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -239,26 +194,8 @@ export default function CandidatesPage() {
                 
                 <div style={{ marginBottom: '1rem' }}>
                   <label className="label">Candidate Photo</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <button 
-                      type="button" 
-                      className="btn btn-secondary" 
-                      style={{ flexShrink: 0 }}
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                    >
-                      {uploading ? 'Uploading...' : '📁 Upload Local Image'}
-                    </button>
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      style={{ display: 'none' }} 
-                      accept="image/png, image/jpeg, image/webp" 
-                      onChange={handleFileUpload} 
-                    />
-                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--slate-500)' }}>OR Link:</span>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--slate-500)' }}>Link:</span>
                     <input className="input" style={{ padding: '0.3rem 0.5rem', height: 'auto', fontSize: '0.8125rem' }} placeholder="https://..." value={form.photo} onChange={(e) => setForm({ ...form, photo: e.target.value })} />
                   </div>
                   {form.photo && (

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, hashPassword, verifyPassword, generateToken, setAuthCookie } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,31 +19,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
     }
 
-    // Fetch admin
-    const { data: admin, error } = await supabaseAdmin
-      .from('admins')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+    const adminResult = await pool.query('SELECT * FROM admins WHERE id = $1', [user.id]);
+    const admin = adminResult.rows[0];
 
-    if (error || !admin) {
+    if (!admin) {
       return NextResponse.json({ error: 'Admin not found' }, { status: 404 });
     }
 
-    // Verify current password
     const validPassword = await verifyPassword(currentPassword, admin.password);
     if (!validPassword) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 });
     }
 
-    // Hash new password and update
     const hashedPassword = await hashPassword(newPassword);
-    await supabaseAdmin
-      .from('admins')
-      .update({ password: hashedPassword, must_change_password: false, updated_at: new Date().toISOString() })
-      .eq('id', user.id);
+    await pool.query(
+      'UPDATE admins SET password = $1, must_change_password = false, updated_at = $2 WHERE id = $3',
+      [hashedPassword, new Date().toISOString(), user.id]
+    );
 
-    // Generate new token without mustChangePassword
     const newToken = generateToken({
       id: user.id,
       role: 'admin',
@@ -51,12 +44,10 @@ export async function POST(request: NextRequest) {
     });
     await setAuthCookie(newToken);
 
-    // Log activity
-    await supabaseAdmin.from('activity_logs').insert({
-      action: 'Password Changed',
-      details: `Admin "${user.username}" changed their password`,
-      performed_by: user.username || 'admin',
-    });
+    await pool.query(
+      'INSERT INTO activity_logs (action, details, performed_by) VALUES ($1, $2, $3)',
+      ['Password Changed', `Admin "${user.username}" changed their password`, user.username || 'admin']
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,15 +15,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Name and election ID are required' }, { status: 400 });
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('positions')
-      .insert({ name, election_id: electionId })
-      .select()
-      .single();
+    const insertResult = await pool.query(
+      'INSERT INTO positions (name, election_id) VALUES ($1, $2) RETURNING *',
+      [name, electionId]
+    );
 
-    if (error) throw error;
-
-    return NextResponse.json(data, { status: 201 });
+    return NextResponse.json(insertResult.rows[0], { status: 201 });
   } catch (error) {
     console.error('Create position error:', error);
     return NextResponse.json({ error: 'Failed to create position' }, { status: 500 });
@@ -34,20 +31,29 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const electionId = searchParams.get('electionId');
-
-    let query = supabaseAdmin
-      .from('positions')
-      .select('*, candidates(id, name, photo, bio)')
-      .order('created_at', { ascending: true });
+    const values: any[] = [];
+    let query = 'SELECT * FROM positions';
 
     if (electionId) {
-      query = query.eq('election_id', electionId);
+      query += ' WHERE election_id = $1';
+      values.push(electionId);
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
+    query += ' ORDER BY created_at ASC';
+    const positionsResult = await pool.query(query, values);
+    const positions = positionsResult.rows;
 
-    return NextResponse.json(data);
+    const positionIds = positions.map((pos: any) => pos.id);
+    const candidates = positionIds.length > 0
+      ? (await pool.query('SELECT * FROM candidates WHERE position_id = ANY($1)', [positionIds])).rows
+      : [];
+
+    const results = positions.map((pos: any) => ({
+      ...pos,
+      candidates: candidates.filter((candidate: any) => candidate.position_id === pos.id),
+    }));
+
+    return NextResponse.json(results);
   } catch (error) {
     console.error('Get positions error:', error);
     return NextResponse.json({ error: 'Failed to fetch positions' }, { status: 500 });

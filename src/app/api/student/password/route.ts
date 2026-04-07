@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, hashPassword, verifyPassword } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 export async function PUT(request: NextRequest) {
   try {
@@ -19,34 +19,25 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'New password must be at least 6 characters' }, { status: 400 });
     }
 
-    // 1. Get current student record
-    const { data: student, error: fetchError } = await supabaseAdmin
-      .from('students')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+    const studentResult = await pool.query('SELECT * FROM students WHERE id = $1', [user.id]);
+    const student = studentResult.rows[0];
 
-    if (fetchError || !student) {
+    if (!student) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
 
-    // 2. Verify current password
     const valid = await verifyPassword(currentPassword, student.password);
     if (!valid) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 });
     }
 
-    // 3. Update with new hashed password
     const hashedPassword = await hashPassword(newPassword);
-    const { error: updateError } = await supabaseAdmin
-      .from('students')
-      .update({ password: hashedPassword, updated_at: new Date().toISOString() })
-      .eq('id', user.id);
-
-    if (updateError) throw updateError;
+    await pool.query(
+      'UPDATE students SET password = $1, updated_at = $2 WHERE id = $3',
+      [hashedPassword, new Date().toISOString(), user.id]
+    );
 
     return NextResponse.json({ success: true, message: 'Password updated successfully' });
-
   } catch (error) {
     console.error('Update student password error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,59 +9,50 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // 1. Get all relevant elections (Active and Closed)
-    const { data: elections, error: electionsError } = await supabaseAdmin
-      .from('elections')
-      .select(`
-        *,
-        positions (
-          id, name,
-          candidates (id, name, photo, bio)
-        )
-      `)
-      .in('status', ['ACTIVE', 'CLOSED'])
-      .order('created_at', { ascending: false });
+    const electionsResult = await pool.query('SELECT * FROM elections WHERE status = ANY($1) ORDER BY created_at DESC', [['ACTIVE', 'CLOSED']]);
+    const elections = electionsResult.rows;
+    const electionIds = elections.map((el: any) => el.id);
 
-    if (electionsError) throw electionsError;
+    const positionsResult = electionIds.length > 0
+      ? await pool.query('SELECT * FROM positions WHERE election_id = ANY($1) ORDER BY created_at ASC', [electionIds])
+      : { rows: [] };
 
-    // 2. Check which elections this student has already voted in
-    const { data: votedRecords, error: recordsError } = await supabaseAdmin
-      .from('voting_records')
-      .select('election_id')
-      .eq('student_id', user.id);
+    const positionIds = positionsResult.rows.map((pos: any) => pos.id);
+    const candidatesResult = positionIds.length > 0
+      ? await pool.query('SELECT * FROM candidates WHERE position_id = ANY($1)', [positionIds])
+      : { rows: [] };
 
-    if (recordsError) throw recordsError;
-
-    const votedElectionIds = new Set(votedRecords.map(r => r.election_id));
-
-    // 3. Get system-wide stats for lively updates
-    // Total students
-    const { count: totalStudents, error: countError } = await supabaseAdmin
-      .from('students')
-      .select('*', { count: 'exact', head: true });
-
-    // Total unique voters across all elections
-    const { count: totalBallots, error: ballotsError } = await supabaseAdmin
-      .from('voting_records')
-      .select('*', { count: 'exact', head: true });
-
-    if (countError || ballotsError) throw (countError || ballotsError);
-
-    // 4. Enrich elections with voted status
-    const enrichedElections = (elections || []).map(el => ({
+    const electionsWithPositions = elections.map((el: any) => ({
       ...el,
-      hasVoted: votedElectionIds.has(el.id)
+      positions: positionsResult.rows
+        .filter((pos: any) => pos.election_id === el.id)
+        .map((pos: any) => ({
+          ...pos,
+          candidates: candidatesResult.rows.filter((c: any) => c.position_id === pos.id),
+        })),
+    }));
+
+    const votedRecordsResult = await pool.query('SELECT election_id FROM voting_records WHERE student_id = $1', [user.id]);
+    const votedElectionIds = new Set(votedRecordsResult.rows.map((row: any) => row.election_id));
+
+    const totalStudentsResult = await pool.query('SELECT COUNT(*) AS count FROM students');
+    const totalBallotsResult = await pool.query('SELECT COUNT(*) AS count FROM voting_records');
+    const totalStudents = parseInt(totalStudentsResult.rows[0]?.count || '0', 10);
+    const totalBallots = parseInt(totalBallotsResult.rows[0]?.count || '0', 10);
+
+    const enrichedElections = electionsWithPositions.map((el: any) => ({
+      ...el,
+      hasVoted: votedElectionIds.has(el.id),
     }));
 
     return NextResponse.json({
       elections: enrichedElections,
       stats: {
-        totalStudents: totalStudents || 0,
-        totalBallots: totalBallots || 0,
-        turnoutPercentage: totalStudents ? Math.round(((totalBallots || 0) / totalStudents) * 100) : 0
-      }
+        totalStudents,
+        totalBallots,
+        turnoutPercentage: totalStudents ? Math.round((totalBallots / totalStudents) * 100) : 0,
+      },
     });
-
   } catch (error: any) {
     console.error('Student dashboard stats error:', error);
     return NextResponse.json({ error: 'Failed to fetch dashboard data' }, { status: 500 });

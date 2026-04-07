@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, hashPassword } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 import Papa from 'papaparse';
 
 export async function POST(request: NextRequest) {
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       const studentId = row['studentid'] || row['student_id'] || row['id'];
       const name = row['name'] || row['fullname'] || row['full_name'];
       const className = row['class'] || row['grade'] || row['classname'];
-      const password = row['password'] || studentId; // Default password = student ID
+      const password = row['password'] || studentId;
 
       if (!studentId || !name || !className) {
         skipped++;
@@ -44,40 +44,29 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Check for existing
-      const { data: existing } = await supabaseAdmin
-        .from('students')
-        .select('id')
-        .eq('student_id', studentId.toString().trim())
-        .single();
-
-      if (existing) {
+      const existingResult = await pool.query('SELECT id FROM students WHERE student_id = $1', [studentId.toString().trim()]);
+      if (existingResult.rows.length > 0) {
         skipped++;
         continue;
       }
 
       const hashedPassword = await hashPassword(password.toString().trim());
-
-      const { error } = await supabaseAdmin.from('students').insert({
-        student_id: studentId.toString().trim(),
-        name: name.toString().trim(),
-        class: className.toString().trim(),
-        password: hashedPassword,
-      });
-
-      if (error) {
-        skipped++;
-        failures.push(`Failed to insert ${studentId}: ${error.message}`);
-      } else {
+      try {
+        await pool.query(
+          'INSERT INTO students (student_id, name, class, password) VALUES ($1, $2, $3, $4)',
+          [studentId.toString().trim(), name.toString().trim(), className.toString().trim(), hashedPassword]
+        );
         added++;
+      } catch (insertError: any) {
+        skipped++;
+        failures.push(`Failed to insert ${studentId}: ${insertError.message || 'insert error'}`);
       }
     }
 
-    await supabaseAdmin.from('activity_logs').insert({
-      action: 'Bulk Student Upload',
-      details: `${added} students added, ${skipped} skipped via CSV upload`,
-      performed_by: user.username || 'admin',
-    });
+    await pool.query(
+      'INSERT INTO activity_logs (action, details, performed_by) VALUES ($1, $2, $3)',
+      ['Bulk Student Upload', `${added} students added, ${skipped} skipped via CSV upload`, user.username || 'admin']
+    );
 
     return NextResponse.json({ success: true, added, skipped, failures });
   } catch (error) {

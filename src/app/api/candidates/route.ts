@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 // GET all candidates
 export async function GET(request: NextRequest) {
@@ -9,31 +9,49 @@ export async function GET(request: NextRequest) {
     const positionId = searchParams.get('positionId');
     const electionId = searchParams.get('electionId');
 
-    let query = supabaseAdmin
-      .from('candidates')
-      .select(`
-        *,
-        position:positions (
-          id, name,
-          election:elections (id, title, status)
-        )
-      `)
-      .order('created_at', { ascending: false });
+    const conditions: string[] = [];
+    const values: any[] = [];
 
     if (positionId) {
-      query = query.eq('position_id', positionId);
+      conditions.push('candidates.position_id = $' + (values.length + 1));
+      values.push(positionId);
     }
 
-    const { data: candidates, error } = await query;
-    if (error) throw error;
-
-    // Filter by electionId if provided
-    let filtered = candidates;
     if (electionId) {
-      filtered = candidates?.filter((c: any) => c.position?.election?.id === electionId) || [];
+      conditions.push('elections.id = $' + (values.length + 1));
+      values.push(electionId);
     }
 
-    return NextResponse.json(filtered);
+    let query = `SELECT candidates.*, positions.id AS position_id, positions.name AS position_name, positions.election_id, elections.id AS election_id, elections.title AS election_title, elections.status AS election_status
+      FROM candidates
+      JOIN positions ON candidates.position_id = positions.id
+      JOIN elections ON positions.election_id = elections.id`;
+
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    query += ' ORDER BY candidates.created_at DESC';
+
+    const result = await pool.query(query, values);
+    const candidates = result.rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      bio: row.bio,
+      photo: row.photo,
+      position_id: row.position_id,
+      position: {
+        id: row.position_id,
+        name: row.position_name,
+        election: {
+          id: row.election_id,
+          title: row.election_title,
+          status: row.election_status,
+        },
+      },
+    }));
+
+    return NextResponse.json(candidates);
   } catch (error) {
     console.error('Get candidates error:', error);
     return NextResponse.json({ error: 'Failed to fetch candidates' }, { status: 500 });
@@ -54,24 +72,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Name and position are required' }, { status: 400 });
     }
 
-    const { data: candidate, error } = await supabaseAdmin
-      .from('candidates')
-      .insert({
-        name,
-        bio: bio || '',
-        photo: photo || null,
-        position_id: positionId,
-      })
-      .select()
-      .single();
+    const insertResult = await pool.query(
+      'INSERT INTO candidates (name, bio, photo, position_id) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, bio || '', photo || null, positionId]
+    );
 
-    if (error) throw error;
+    const candidate = insertResult.rows[0];
 
-    await supabaseAdmin.from('activity_logs').insert({
-      action: 'Candidate Added',
-      details: `Candidate "${name}" was added`,
-      performed_by: user.username || 'admin',
-    });
+    await pool.query(
+      'INSERT INTO activity_logs (action, details, performed_by) VALUES ($1, $2, $3)',
+      ['Candidate Added', `Candidate "${name}" was added`, user.username || 'admin']
+    );
 
     return NextResponse.json(candidate, { status: 201 });
   } catch (error) {

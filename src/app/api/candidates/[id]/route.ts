@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import supabaseAdmin from '@/lib/supabase';
+import pool from '@/lib/db';
 
 // PUT update candidate
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -13,22 +13,37 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     const body = await request.json();
 
-    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (body.name) updateData.name = body.name;
-    if (body.bio !== undefined) updateData.bio = body.bio;
-    if (body.photo !== undefined) updateData.photo = body.photo;
-    if (body.positionId) updateData.position_id = body.positionId;
+    const fields: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
 
-    const { data, error } = await supabaseAdmin
-      .from('candidates')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
+    if (body.name) {
+      fields.push(`name = $${idx++}`);
+      values.push(body.name);
+    }
+    if (body.bio !== undefined) {
+      fields.push(`bio = $${idx++}`);
+      values.push(body.bio);
+    }
+    if (body.photo !== undefined) {
+      fields.push(`photo = $${idx++}`);
+      values.push(body.photo);
+    }
+    if (body.positionId) {
+      fields.push(`position_id = $${idx++}`);
+      values.push(body.positionId);
+    }
 
-    if (error) throw error;
+    fields.push(`updated_at = $${idx++}`);
+    values.push(new Date().toISOString());
+    values.push(id);
 
-    return NextResponse.json(data);
+    const updateResult = await pool.query(
+      `UPDATE candidates SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+
+    return NextResponse.json(updateResult.rows[0]);
   } catch (error) {
     console.error('Update candidate error:', error);
     return NextResponse.json({ error: 'Failed to update candidate' }, { status: 500 });
@@ -44,9 +59,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     const { id } = await params;
-    const { error } = await supabaseAdmin.from('candidates').delete().eq('id', id);
-    if (error) throw error;
-
+    await pool.query('DELETE FROM candidates WHERE id = $1', [id]);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Delete candidate error:', error);

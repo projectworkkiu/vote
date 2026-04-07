@@ -14,11 +14,11 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
 
     let query = 'SELECT id, student_id, name, class, is_active, created_at FROM students';
-    let params = [];
+    const params: string[] = [];
 
     if (search) {
       query += ' WHERE name ILIKE $1 OR student_id ILIKE $1 OR class ILIKE $1';
-      params = [`%${search}%`];
+      params.push(`%${search}%`);
     }
 
     query += ' ORDER BY created_at DESC';
