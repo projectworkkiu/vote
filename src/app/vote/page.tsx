@@ -52,7 +52,7 @@ export default function VotePage() {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           className="card-glass" 
-          style={{ marginBottom: '2.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1.5rem', textAlign: 'center', padding: '1.5rem' }}
+          style={{ marginBottom: '2.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: '1.5rem', textAlign: 'center', padding: '1.5rem' }}
         >
           <div>
             <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--slate-400)', fontWeight: 600 }}>Total Ballots Cast</div>
@@ -82,7 +82,7 @@ export default function VotePage() {
           <p style={{ color: 'var(--slate-500)' }}>No active elections at the moment</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: '1rem' }}>
           {elections.map((el, i) => (
             <motion.div
               key={el.id}

@@ -198,7 +198,7 @@ export default function ElectionsPage() {
                   <label className="label">Description</label>
                   <textarea className="input" placeholder="Election description..." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                   <div>
                     <label className="label">Start Date *</label>
                     <input type="datetime-local" className="input" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />

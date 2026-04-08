@@ -112,7 +112,7 @@ export default function ResultsPage() {
                   </span>
                 )}
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', minHeight: '200px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '1rem', minHeight: '200px' }}>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={r.candidates}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />

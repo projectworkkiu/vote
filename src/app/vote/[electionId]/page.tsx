@@ -138,7 +138,7 @@ export default function VotingBoothPage({ params }: { params: Promise<{ election
               Select: <span className="gradient-text">{currentPosition?.name}</span>
             </h2>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '1rem' }}>
               {currentPosition?.candidates.map((c) => {
                 const isSelected = selections[currentPosition.id] === c.id;
                 return (

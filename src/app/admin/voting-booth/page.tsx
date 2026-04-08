@@ -57,7 +57,7 @@ export default function VotingBoothPage() {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '1.5rem' }}>
         {/* Shareable Link Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -153,27 +153,14 @@ export default function VotingBoothPage() {
             </motion.button>
           </div>
 
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button
-              className="btn btn-primary"
-              onClick={() => window.open(boothUrl, '_blank')}
-              style={{ flex: 1, background: 'linear-gradient(135deg, #3b82f6, #6366f1)' }}
-            >
-              🔗 Open in New Tab
-            </button>
-            <button
-              className="btn btn-ghost"
-              onClick={() => {
-                const subject = encodeURIComponent('Vote Now — Smart Vote');
-                const body = encodeURIComponent(`Hi!\n\nYou can cast your vote using the link below:\n\n${boothUrl}\n\nLog in with your Student ID and password to access the ballot.\n\nHappy voting! 🗳️`);
-                window.open(`mailto:?subject=${subject}&body=${body}`);
-              }}
-              style={{ flex: 1 }}
-            >
-              📧 Share via Email
-            </button>
-          </div>
+          {/* Action Button */}
+          <button
+            className="btn btn-primary"
+            onClick={() => window.open(boothUrl, '_blank')}
+            style={{ width: '100%', background: 'linear-gradient(135deg, #3b82f6, #6366f1)' }}
+          >
+            🔗 Open in New Tab
+          </button>
         </motion.div>
 
         {/* Right Column */}
@@ -189,7 +176,7 @@ export default function VotingBoothPage() {
               <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--slate-200)' }}>
                 📊 Live Voting Stats
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', textAlign: 'center' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '1rem', textAlign: 'center' }}>
                 <div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#3b82f6' }}>{stats.totalStudents}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', fontWeight: 500 }}>Students</div>
