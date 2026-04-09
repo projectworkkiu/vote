@@ -19,8 +19,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Election not found' }, { status: 404 });
     }
 
-    // Students can only see results after election is closed
-    if (user.role === 'student' && election.status !== 'CLOSED') {
+    // Students can see live results for ACTIVE and CLOSED elections (transparency)
+    if (user.role === 'student' && election.status === 'DRAFT') {
       return NextResponse.json({ error: 'Results are not available yet' }, { status: 403 });
     }
 

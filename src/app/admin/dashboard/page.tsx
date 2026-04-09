@@ -20,7 +20,7 @@ interface DashboardStats {
   electionStats: Array<{ name: string; votes: number; status: string }>;
 }
 
-const COLORS = ['#10b981', '#059669', '#34d399', '#6ee7b7', '#a7f3d0'];
+const COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4'];
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -105,7 +105,7 @@ export default function DashboardPage() {
         >
           <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--slate-200)' }}>Votes Per Election</h3>
           {stats?.electionStats && stats.electionStats.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={180}>
               <BarChart data={stats.electionStats}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={{ stroke: '#334155' }} />
@@ -117,7 +117,7 @@ export default function DashboardPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div style={{ height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--slate-500)' }}>
+            <div style={{ height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--slate-500)' }}>
               No election data yet
             </div>
           )}
@@ -132,7 +132,7 @@ export default function DashboardPage() {
         >
           <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--slate-200)' }}>Vote Distribution</h3>
           {pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={180}>
               <PieChart>
                 <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="votes" nameKey="name">
                   {pieData.map((_, index) => (
@@ -143,7 +143,7 @@ export default function DashboardPage() {
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div style={{ height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--slate-500)' }}>
+            <div style={{ height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--slate-500)' }}>
               No vote data yet
             </div>
           )}
