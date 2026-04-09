@@ -8,7 +8,6 @@ export default function ThemeControls() {
   const [isDark, setIsDark] = useState(true);
 
   useEffect(() => {
-    // Check local storage on mount
     const saved = localStorage.getItem('theme');
     if (saved === 'light') {
       document.documentElement.classList.add('light-mode');
@@ -29,39 +28,28 @@ export default function ThemeControls() {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-      <button 
-        onClick={() => router.back()} 
-        className="btn btn-sm btn-ghost" 
-        style={{ padding: '0.5rem' }}
-        title="Go Back"
-      >
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+      <button onClick={() => router.back()} className="btn btn-sm btn-ghost" style={{ padding: '0.4rem' }} title="Go Back">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="19" y1="12" x2="5" y2="12"></line>
-          <polyline points="12 19 5 12 12 5"></polyline>
+          <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
         </svg>
       </button>
-
-      <button 
-        onClick={() => router.forward()} 
-        className="btn btn-sm btn-ghost" 
-        style={{ padding: '0.5rem' }}
-        title="Go Forward"
-      >
+      <button onClick={() => router.forward()} className="btn btn-sm btn-ghost" style={{ padding: '0.4rem' }} title="Go Forward">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-          <polyline points="12 5 19 12 12 19"></polyline>
+          <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
         </svg>
       </button>
-
-      <button 
-        onClick={toggleTheme} 
-        className="btn btn-sm btn-secondary" 
-        style={{ padding: '0.4rem 0.6rem', borderRadius: '2rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-        title="Toggle Theme"
-      >
-        {isDark ? '☀️ Light' : '🌙 Dark'}
+      <button onClick={toggleTheme} className="btn btn-sm btn-secondary" style={{ padding: '0.4rem 0.6rem', borderRadius: '2rem' }} title="Toggle Theme">
+        <span className="theme-label">{isDark ? '☀️ Light' : '🌙 Dark'}</span>
+        <span className="theme-icon">{isDark ? '☀️' : '🌙'}</span>
       </button>
+      <style>{`
+        .theme-icon { display: none; }
+        @media (max-width: 639px) {
+          .theme-label { display: none; }
+          .theme-icon { display: inline; }
+        }
+      `}</style>
     </div>
   );
 }

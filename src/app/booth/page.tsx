@@ -67,7 +67,7 @@ export default function BoothPage() {
   };
 
   return (
-    <div className="gradient-bg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', padding: '1rem' }}>
+    <div className="gradient-bg" style={{ minHeight: '100vh', minBlockSize: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', padding: 'var(--page-px)' }}>
       {/* Theme Toggle Button */}
       <button
         onClick={toggleTheme}
@@ -120,7 +120,7 @@ export default function BoothPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        style={{ width: '100%', maxWidth: '440px', position: 'relative', zIndex: 10 }}
+        style={{ width: '100%', maxWidth: '440px', position: 'relative', zIndex: 10, margin: '0 auto' }}
       >
         {/* Logo / Brand */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>

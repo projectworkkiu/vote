@@ -49,7 +49,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="gradient-bg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', padding: '1rem' }}>
+    <div className="gradient-bg" style={{ minHeight: '100vh', minBlockSize: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', padding: 'var(--page-px)' }}>
       {/* Background Orbs */}
       <div className="orb orb-1" />
       <div className="orb orb-2" />
