@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
       name: row.name,
       bio: row.bio,
       photo: row.photo,
+      student_id: row.student_id || null,
       position_id: row.position_id,
       position: {
         id: row.position_id,
@@ -66,15 +67,51 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { name, bio, photo, positionId } = await request.json();
+    const { name, bio, photo, positionId, studentId } = await request.json();
 
     if (!name || !positionId) {
       return NextResponse.json({ error: 'Name and position are required' }, { status: 400 });
     }
 
+    // Guarantee the column exists (Migration)
+    await pool.query('ALTER TABLE candidates ADD COLUMN IF NOT EXISTS student_id TEXT;');
+
+    // Prevent Duplicate Candidate and Check Election Status
+    const positionCheck = await pool.query('SELECT election_id FROM positions WHERE id = $1', [positionId]);
+    if (positionCheck.rows.length === 0) {
+      return NextResponse.json({ error: 'Position not found' }, { status: 404 });
+    }
+    const electionId = positionCheck.rows[0].election_id;
+
+    const electionCheck = await pool.query('SELECT status FROM elections WHERE id = $1', [electionId]);
+    if (electionCheck.rows.length > 0 && electionCheck.rows[0].status !== 'DRAFT') {
+      return NextResponse.json({ error: 'Candidates cannot be added strictly to ongoing or closed elections.' }, { status: 400 });
+    }
+
+    let duplicateCheck;
+    if (studentId) {
+      duplicateCheck = await pool.query(
+        `SELECT c.id FROM candidates c 
+         JOIN positions p ON c.position_id = p.id 
+         WHERE c.student_id = $1 AND p.election_id = $2`,
+        [studentId, electionId]
+      );
+    } else {
+      duplicateCheck = await pool.query(
+        `SELECT c.id FROM candidates c 
+         JOIN positions p ON c.position_id = p.id 
+         WHERE c.name ILIKE $1 AND p.election_id = $2`,
+        [name, electionId]
+      );
+    }
+
+    if (duplicateCheck.rows.length > 0) {
+      return NextResponse.json({ error: 'This candidate has already been added to this election.' }, { status: 400 });
+    }
+
     const insertResult = await pool.query(
-      'INSERT INTO candidates (name, bio, photo, position_id) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, bio || '', photo || null, positionId]
+      'INSERT INTO candidates (name, bio, photo, position_id, student_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [name, bio || '', photo || null, positionId, studentId || null]
     );
 
     const candidate = insertResult.rows[0];

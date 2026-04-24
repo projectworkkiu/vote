@@ -95,7 +95,7 @@ export default function StudentsPage() {
           <table>
             <thead><tr><th>Student ID</th><th>Name</th><th>Course</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
-              {students.map(s => (
+              {students.slice(0, 100).map(s => (
                 <tr key={s.id}>
                   <td style={{ fontWeight: 600, fontFamily: 'monospace' }}>{s.student_id}</td>
                   <td>{s.name}</td><td>{s.class}</td>
@@ -109,6 +109,13 @@ export default function StudentsPage() {
                   </td>
                 </tr>
               ))}
+              {students.length > 100 && (
+                 <tr>
+                   <td colSpan={5} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--slate-500)', fontSize: '0.875rem' }}>
+                     <em>Showing first 100 local records to optimize performance. Please use the Search bar to find specific students.</em>
+                   </td>
+                 </tr>
+              )}
             </tbody>
           </table>
         </div>

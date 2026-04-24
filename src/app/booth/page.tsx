@@ -12,6 +12,25 @@ export default function BoothPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLightMode, setIsLightMode] = useState(false);
 
+  const [studentSuggestions, setStudentSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const handleStudentSearch = async (query: string) => {
+    if (!query || query.length < 2) {
+      setStudentSuggestions([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/students/public?search=${encodeURIComponent(query)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setStudentSuggestions(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // Theme logic
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -173,7 +192,7 @@ export default function BoothPage() {
 
           <form onSubmit={handleSubmit}>
             {/* Student ID */}
-            <div style={{ marginBottom: '1rem' }}>
+            <div style={{ marginBottom: '1rem', position: 'relative' }}>
               <label className="label">Student ID</label>
               <div style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--slate-500)' }}>
@@ -185,14 +204,44 @@ export default function BoothPage() {
                 <input
                   type="text"
                   className="input"
-                  placeholder="Enter your student ID"
+                  placeholder="Enter Registration No. or Name"
                   value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, username: e.target.value });
+                    handleStudentSearch(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
                   style={{ paddingLeft: '2.5rem' }}
                   autoComplete="off"
                   autoFocus
                 />
               </div>
+              
+              {showSuggestions && studentSuggestions.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, 
+                  background: 'var(--slate-800)', border: '1px solid var(--slate-700)', 
+                  borderRadius: '0.5rem', marginTop: '0.25rem', zIndex: 50,
+                  maxHeight: '150px', overflowY: 'auto', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                }}>
+                  {studentSuggestions.map((st) => (
+                    <div 
+                      key={st.student_id}
+                      style={{ padding: '0.5rem 0.75rem', cursor: 'pointer', borderBottom: '1px solid var(--slate-700)' }}
+                      onClick={() => {
+                        setForm({ ...form, username: st.student_id });
+                        setShowSuggestions(false);
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--slate-700)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{st.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{st.student_id}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Password */}

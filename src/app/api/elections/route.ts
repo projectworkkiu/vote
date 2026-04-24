@@ -5,6 +5,19 @@ import pool from '@/lib/db';
 // GET all elections
 export async function GET() {
   try {
+    // Automatically update statuses
+    await pool.query(`
+      UPDATE elections 
+      SET status = 'CLOSED' 
+      WHERE end_date < NOW() AND status != 'CLOSED'
+    `);
+    
+    await pool.query(`
+      UPDATE elections 
+      SET status = 'ACTIVE' 
+      WHERE start_date <= NOW() AND end_date >= NOW() AND status != 'ACTIVE'
+    `);
+
     const electionsResult = await pool.query('SELECT * FROM elections ORDER BY created_at DESC');
     const elections = electionsResult.rows;
     const electionIds = elections.map((el: any) => el.id);

@@ -5,6 +5,11 @@ import { motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { formatDate } from '@/lib/formatDate';
 
+const CANDIDATE_COLORS = [
+  '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#a855f7',
+];
+
 interface DashboardStats {
   totalStudents: number;
   activeElections: number;
@@ -26,22 +31,46 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAllActivity, setShowAllActivity] = useState(false);
+  const [elections, setElections] = useState<any[]>([]);
+  const [liveResults, setLiveResults] = useState<Record<string, { results: any[]; totalVoters: number; election: any }>>({});
 
   useEffect(() => {
     fetchStats();
+    
+    // Poll for realtime differentiation updates every 30 seconds to spare heavy mobile CPUs
+    const iv = setInterval(() => fetchStats(true), 30000);
+    return () => clearInterval(iv);
   }, []);
 
-  const fetchStats = async () => {
+  const fetchStats = async (silent = false) => {
     try {
       const res = await fetch('/api/dashboard/stats');
       if (res.ok) {
         const data = await res.json();
         setStats(data);
       }
+
+      // Fetch precise active elections to differentiate live feeds explicitly
+      const elRes = await fetch('/api/elections');
+      if (elRes.ok) {
+        const elData = await elRes.json();
+        setElections(elData);
+        
+        const activeEls = elData.filter((e: any) => e.status === 'ACTIVE' || e.status === 'CLOSED');
+        for (const el of activeEls) {
+          try {
+            const lr = await fetch(`/api/results/${el.id}`);
+            const lrData = await lr.json();
+            if (lrData && !lrData.error) {
+              setLiveResults(prev => ({ ...prev, [el.id]: lrData }));
+            }
+          } catch {}
+        }
+      }
     } catch (err) {
       console.error('Failed to fetch stats:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -148,6 +177,79 @@ export default function DashboardPage() {
             </div>
           )}
         </motion.div>
+      </div>
+
+      {/* Realtime Differentiated Results */}
+      <div style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--slate-200)' }}>🛰️ Live Updates by Election</h2>
+        {elections.filter(el => el.status === 'ACTIVE' || el.status === 'CLOSED').length === 0 ? (
+          <p style={{ color: 'var(--slate-500)', fontStyle: 'italic' }}>No active live tracking available at the moment.</p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 350px), 1fr))', gap: '1rem' }}>
+            {elections.filter(el => el.status === 'ACTIVE' || el.status === 'CLOSED').map(el => {
+              const live = liveResults[el.id];
+              if (!live || live.results.length === 0) return null;
+
+              const ended = el.status === 'CLOSED';
+
+              return (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} key={el.id} className="card" style={{ border: '1px solid var(--slate-700)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '1px solid var(--slate-800)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: ended ? 'var(--slate-500)' : 'var(--green-500)' }} className={ended ? '' : 'pulse-green'} />
+                      <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--slate-200)' }}>{el.title}</h3>
+                    </div>
+                    <span className={`badge ${ended ? 'badge-gray' : 'badge-green'}`} style={{ fontSize: '0.65rem' }}>
+                      {ended ? 'CLOSED' : 'LIVE'} ({live.totalVoters} Voters)
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    {live.results.map((pos: any) => {
+                      const totalVotes = pos.candidates.reduce((s: any, c: any) => s + c.votes, 0);
+                      const maxVotes = pos.candidates.length > 0 ? pos.candidates[0].votes : 0;
+                      const isTie = pos.candidates.filter((c: any) => c.votes === maxVotes && maxVotes > 0).length > 1;
+
+                      return (
+                        <div key={pos.positionId}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--slate-300)' }}>{pos.position}</span>
+                            {ended && maxVotes > 0 && (
+                              <span className={`badge ${isTie ? 'badge-yellow' : 'badge-green'}`} style={{ fontSize: '0.65rem' }}>
+                                {isTie ? '🤝 TIE' : `🏆 ${pos.candidates[0].name}`}
+                              </span>
+                            )}
+                          </div>
+
+                          {pos.candidates.map((c: any, ci: number) => {
+                            const pct = totalVotes > 0 ? Math.round((c.votes / totalVotes) * 100) : 0;
+                            return (
+                              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.375rem' }}>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)', width: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                                <div style={{ flex: 1, height: '8px', background: 'var(--slate-800)', borderRadius: '4px', overflow: 'hidden' }}>
+                                  <div
+                                    style={{ 
+                                      height: '100%', 
+                                      background: CANDIDATE_COLORS[ci % CANDIDATE_COLORS.length], 
+                                      borderRadius: '4px',
+                                      width: `${pct}%`,
+                                      transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                                    }}
+                                  />
+                                </div>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: CANDIDATE_COLORS[ci % CANDIDATE_COLORS.length], minWidth: '40px', textAlign: 'right' }}>{c.votes} </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Recent Activity */}

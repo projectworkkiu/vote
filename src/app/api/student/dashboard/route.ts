@@ -9,6 +9,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Automatically update election statuses
+    await pool.query(`
+      UPDATE elections 
+      SET status = 'CLOSED' 
+      WHERE end_date < NOW() AND status != 'CLOSED'
+    `);
+    
+    await pool.query(`
+      UPDATE elections 
+      SET status = 'ACTIVE' 
+      WHERE start_date <= NOW() AND end_date >= NOW() AND status != 'ACTIVE'
+    `);
+
     const electionsResult = await pool.query('SELECT * FROM elections WHERE status = ANY($1) ORDER BY created_at DESC', [['ACTIVE', 'CLOSED']]);
     const elections = electionsResult.rows;
     const electionIds = elections.map((el: any) => el.id);

@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
   } catch (error) {
-    console.error('Login error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Login error:', error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }

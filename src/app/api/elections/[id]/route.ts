@@ -7,6 +7,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params;
 
+    // Automatically update statuses
+    await pool.query(`
+      UPDATE elections 
+      SET status = 'CLOSED' 
+      WHERE end_date < NOW() AND status != 'CLOSED'
+    `);
+    
+    await pool.query(`
+      UPDATE elections 
+      SET status = 'ACTIVE' 
+      WHERE start_date <= NOW() AND end_date >= NOW() AND status != 'ACTIVE'
+    `);
+
     const electionResult = await pool.query('SELECT * FROM elections WHERE id = $1', [id]);
     const election = electionResult.rows[0];
 

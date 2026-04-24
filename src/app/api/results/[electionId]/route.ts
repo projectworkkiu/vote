@@ -71,6 +71,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
       results: finalResults,
       totalVoters,
+    }, {
+      headers: {
+        'Cache-Control': 's-maxage=15, stale-while-revalidate=59',
+      },
     });
   } catch (error) {
     console.error('Results error:', error);

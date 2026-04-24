@@ -61,12 +61,12 @@ export default function VotePage() {
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
   useEffect(() => { if (elections.length > 0) fetchLiveResults(); }, [elections.length, fetchLiveResults]);
 
-  // Poll every 5s
+  // Poll every 30s instead of 5s to save heavy battery and CPU loops on low end phones
   useEffect(() => {
     const iv = setInterval(() => {
       fetchDashboard(true);
       fetchLiveResults();
-    }, 5000);
+    }, 30000);
     return () => clearInterval(iv);
   }, [fetchDashboard, fetchLiveResults]);
 
@@ -153,11 +153,13 @@ export default function VotePage() {
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                     <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: el.hasVoted ? 'var(--slate-300)' : 'inherit' }}>{el.title}</h3>
-                    {el.status === 'ACTIVE' && !el.hasVoted ? (
-                      <span className="badge badge-green pulse-green">{getTimeLeft(el.end_date)}</span>
+                    {ended ? (
+                      <span className="badge badge-gray" style={{ textTransform: 'uppercase' }}>
+                        {el.hasVoted ? 'VOTED ✅' : 'ENDED'}
+                      </span>
                     ) : (
-                      <span className={`badge ${el.status === 'CLOSED' ? 'badge-gray' : 'badge-green'}`}>
-                        {el.hasVoted ? 'VOTED ✅' : el.status}
+                      <span className="badge badge-green pulse-green" style={{ textTransform: 'uppercase' }}>
+                        {el.hasVoted ? 'VOTED ✅' : `ONGOING (${getTimeLeft(el.end_date)})`}
                       </span>
                     )}
                   </div>
@@ -208,11 +210,14 @@ export default function VotePage() {
                               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.375rem' }}>
                                 <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)', minWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
                                 <div style={{ flex: 1, height: '16px', background: 'var(--slate-800)', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
-                                  <motion.div
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${pct}%` }}
-                                    transition={{ duration: 0.5 }}
-                                    style={{ height: '100%', background: CANDIDATE_COLORS[ci % CANDIDATE_COLORS.length], borderRadius: '4px' }}
+                                  <div
+                                    style={{ 
+                                      height: '100%', 
+                                      background: CANDIDATE_COLORS[ci % CANDIDATE_COLORS.length], 
+                                      borderRadius: '4px',
+                                      width: `${pct}%`,
+                                      transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)' 
+                                    }}
                                   />
                                 </div>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: CANDIDATE_COLORS[ci % CANDIDATE_COLORS.length], minWidth: '45px', textAlign: 'right' }}>{c.votes} ({pct}%)</span>
